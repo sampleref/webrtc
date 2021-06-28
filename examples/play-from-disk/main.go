@@ -44,11 +44,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() {
+		if cErr := peerConnection.Close(); cErr != nil {
+			fmt.Printf("cannot close peerConnection: %v\n", cErr)
+		}
+	}()
+
 	iceConnectedCtx, iceConnectedCtxCancel := context.WithCancel(context.Background())
 
 	if haveVideoFile {
 		// Create a video track
-		videoTrack, videoTrackErr := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "video/vp8"}, "video", "pion")
+		videoTrack, videoTrackErr := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}, "video", "pion")
 		if videoTrackErr != nil {
 			panic(videoTrackErr)
 		}
@@ -109,7 +115,7 @@ func main() {
 
 	if haveAudioFile {
 		// Create a audio track
-		audioTrack, audioTrackErr := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/opus"}, "audio", "pion")
+		audioTrack, audioTrackErr := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "pion")
 		if audioTrackErr != nil {
 			panic(audioTrackErr)
 		}
@@ -174,12 +180,27 @@ func main() {
 		}()
 	}
 
+	ctx, done := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		fmt.Printf("Connection State has changed %s \n", connectionState.String())
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			iceConnectedCtxCancel()
+		}
+	})
+
+	// Set the handler for Peer connection state
+	// This will notify you when the peer has connected/disconnected
+	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+
+		if s == webrtc.PeerConnectionStateFailed {
+			// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
+			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
+			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+			done()
 		}
 	})
 
@@ -214,6 +235,6 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(*peerConnection.LocalDescription()))
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

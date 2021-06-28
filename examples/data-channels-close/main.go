@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"time"
@@ -29,11 +30,25 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer func() {
+		if cErr := peerConnection.Close(); cErr != nil {
+			fmt.Printf("cannot close peerConnection: %v\n", cErr)
+		}
+	}()
 
-	// Set the handler for ICE connection state
+	ctx, done := context.WithCancel(context.Background())
+
+	// Set the handler for Peer connection state
 	// This will notify you when the peer has connected/disconnected
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+
+		if s == webrtc.PeerConnectionStateFailed {
+			// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
+			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
+			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+			done()
+		}
 	})
 
 	// Register data channel creation handling
@@ -113,6 +128,6 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(*peerConnection.LocalDescription()))
 
-	// Block forever
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }

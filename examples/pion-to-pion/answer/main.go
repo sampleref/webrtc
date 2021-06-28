@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -52,6 +53,11 @@ func main() { // nolint:gocognit
 	if err != nil {
 		panic(err)
 	}
+	defer func() {
+		if err := peerConnection.Close(); err != nil {
+			fmt.Printf("cannot close peerConnection: %v\n", err)
+		}
+	}()
 
 	// When an ICE candidate is available send to the other Pion instance
 	// the other Pion instance will add this candidate by calling AddICECandidate
@@ -129,10 +135,19 @@ func main() { // nolint:gocognit
 		candidatesMux.Unlock()
 	})
 
-	// Set the handler for ICE connection state
+	ctx, done := context.WithCancel(context.Background())
+
+	// Set the handler for Peer connection state
 	// This will notify you when the peer has connected/disconnected
-	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("ICE Connection State has changed: %s\n", connectionState.String())
+	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+
+		if s == webrtc.PeerConnectionStateFailed {
+			// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
+			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
+			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+			done()
+		}
 	})
 
 	// Register data channel creation handling
@@ -162,5 +177,10 @@ func main() { // nolint:gocognit
 	})
 
 	// Start HTTP server that accepts requests from the offer process to exchange SDP and Candidates
-	panic(http.ListenAndServe(*answerAddr, nil))
+	go func() {
+		panic(http.ListenAndServe(*answerAddr, nil))
+	}()
+
+	// Block until shutdown
+	<-ctx.Done()
 }

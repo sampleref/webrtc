@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net"
 	"sync/atomic"
@@ -106,9 +108,47 @@ func main() {
 
 	offerPeerConnection, err := offerAPI.NewPeerConnection(webrtc.Configuration{})
 	panicIfError(err)
+	defer func() {
+		if cErr := offerPeerConnection.Close(); cErr != nil {
+			fmt.Printf("cannot close offerPeerConnection: %v\n", cErr)
+		}
+	}()
 
 	answerPeerConnection, err := answerAPI.NewPeerConnection(webrtc.Configuration{})
 	panicIfError(err)
+	defer func() {
+		if cErr := answerPeerConnection.Close(); cErr != nil {
+			fmt.Printf("cannot close answerPeerConnection: %v\n", cErr)
+		}
+	}()
+
+	ctx, done := context.WithCancel(context.Background())
+
+	// Set the handler for Peer connection state
+	// This will notify you when the peer has connected/disconnected
+	offerPeerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s (offerer)\n", s.String())
+
+		if s == webrtc.PeerConnectionStateFailed {
+			// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
+			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
+			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+			done()
+		}
+	})
+
+	// Set the handler for Peer connection state
+	// This will notify you when the peer has connected/disconnected
+	answerPeerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		fmt.Printf("Peer Connection State has changed: %s (answerer)\n", s.String())
+
+		if s == webrtc.PeerConnectionStateFailed {
+			// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
+			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
+			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+			done()
+		}
+	})
 
 	// Set ICE Candidate handler. As soon as a PeerConnection has gathered a candidate
 	// send it to the other peer
@@ -158,7 +198,8 @@ func main() {
 	panicIfError(answerPeerConnection.SetLocalDescription(answer))
 	panicIfError(offerPeerConnection.SetRemoteDescription(answer))
 
-	select {}
+	// Block until shutdown
+	<-ctx.Done()
 }
 
 func panicIfError(err error) {
