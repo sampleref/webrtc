@@ -134,6 +134,9 @@ func (s *TrackLocalStaticRTP) writeRTP(p *rtp.Packet) error {
 	writeErrs := []error{}
 
 	for _, b := range s.bindings {
+		if p.Header.SSRC == uint32(b.ssrc) && s.Kind() == RTPCodecTypeAudio {
+			continue
+		}
 		p.Header.SSRC = uint32(b.ssrc)
 		p.Header.PayloadType = uint8(b.payloadType)
 		if _, err := b.writeStream.WriteRTP(&p.Header, p.Payload); err != nil {
