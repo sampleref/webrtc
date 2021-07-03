@@ -111,6 +111,19 @@ var rtpPacketPool = sync.Pool{
 	},
 }
 
+// Same as WriteRTP,
+// Only takes extra ssrc to skip sending RTP to avoid loopback
+func (s *TrackLocalStaticRTP) WriteRTPSkipSSRC(p *rtp.Packet, ssrcSkip uint32) error {
+	ipacket := rtpPacketPool.Get()
+	packet := ipacket.(*rtp.Packet)
+	defer func() {
+		*packet = rtp.Packet{}
+		rtpPacketPool.Put(ipacket)
+	}()
+	*packet = *p
+	return s.writeRTP(packet, ssrcSkip)
+}
+
 // WriteRTP writes a RTP Packet to the TrackLocalStaticRTP
 // If one PeerConnection fails the packets will still be sent to
 // all PeerConnections. The error message will contain the ID of the failed
@@ -123,18 +136,18 @@ func (s *TrackLocalStaticRTP) WriteRTP(p *rtp.Packet) error {
 		rtpPacketPool.Put(ipacket)
 	}()
 	*packet = *p
-	return s.writeRTP(packet)
+	return s.writeRTP(packet, 0)
 }
 
 // writeRTP is like WriteRTP, except that it may modify the packet p
-func (s *TrackLocalStaticRTP) writeRTP(p *rtp.Packet) error {
+func (s *TrackLocalStaticRTP) writeRTP(p *rtp.Packet, ssrcSkip uint32) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	writeErrs := []error{}
 
 	for _, b := range s.bindings {
-		if p.Header.SSRC == uint32(b.ssrc) && s.Kind() == RTPCodecTypeAudio {
+		if ssrcSkip > 0 && ssrcSkip == uint32(b.ssrc) {
 			continue
 		}
 		p.Header.SSRC = uint32(b.ssrc)
@@ -163,7 +176,7 @@ func (s *TrackLocalStaticRTP) Write(b []byte) (n int, err error) {
 		return 0, err
 	}
 
-	return len(b), s.writeRTP(packet)
+	return len(b), s.writeRTP(packet, 0)
 }
 
 // TrackLocalStaticSample is a TrackLocal that has a pre-set codec and accepts Samples.
