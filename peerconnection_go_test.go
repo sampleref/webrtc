@@ -384,17 +384,17 @@ func TestPeerConnection_PropertyGetters(t *testing.T) {
 		currentRemoteDescription: &SessionDescription{},
 		pendingRemoteDescription: &SessionDescription{},
 		signalingState:           SignalingStateHaveLocalOffer,
+		iceConnectionState:       ICEConnectionStateChecking,
+		connectionState:          PeerConnectionStateConnecting,
 	}
-	pc.iceConnectionState.Store(ICEConnectionStateChecking)
-	pc.connectionState.Store(PeerConnectionStateConnecting)
 
 	assert.Equal(t, pc.currentLocalDescription, pc.CurrentLocalDescription(), "should match")
 	assert.Equal(t, pc.pendingLocalDescription, pc.PendingLocalDescription(), "should match")
 	assert.Equal(t, pc.currentRemoteDescription, pc.CurrentRemoteDescription(), "should match")
 	assert.Equal(t, pc.pendingRemoteDescription, pc.PendingRemoteDescription(), "should match")
 	assert.Equal(t, pc.signalingState, pc.SignalingState(), "should match")
-	assert.Equal(t, pc.iceConnectionState.Load(), pc.ICEConnectionState(), "should match")
-	assert.Equal(t, pc.connectionState.Load(), pc.ConnectionState(), "should match")
+	assert.Equal(t, pc.iceConnectionState, pc.ICEConnectionState(), "should match")
+	assert.Equal(t, pc.connectionState, pc.ConnectionState(), "should match")
 }
 
 func TestPeerConnection_AnswerWithoutOffer(t *testing.T) {
@@ -1396,41 +1396,4 @@ func TestPeerConnection_SessionID(t *testing.T) {
 		}
 	}
 	closePairNow(t, pcOffer, pcAnswer)
-}
-
-func TestPeerConnectionNilCallback(t *testing.T) {
-	pc, err := NewPeerConnection(Configuration{})
-	assert.NoError(t, err)
-
-	pc.onSignalingStateChange(SignalingStateStable)
-	pc.OnSignalingStateChange(func(ss SignalingState) {
-		t.Error("OnSignalingStateChange called")
-	})
-	pc.OnSignalingStateChange(nil)
-	pc.onSignalingStateChange(SignalingStateStable)
-
-	pc.onConnectionStateChange(PeerConnectionStateNew)
-	pc.OnConnectionStateChange(func(pcs PeerConnectionState) {
-		t.Error("OnConnectionStateChange called")
-	})
-	pc.OnConnectionStateChange(nil)
-	pc.onConnectionStateChange(PeerConnectionStateNew)
-
-	pc.onICEConnectionStateChange(ICEConnectionStateNew)
-	pc.OnICEConnectionStateChange(func(ics ICEConnectionState) {
-		t.Error("OnConnectionStateChange called")
-	})
-	pc.OnICEConnectionStateChange(nil)
-	pc.onICEConnectionStateChange(ICEConnectionStateNew)
-
-	pc.onNegotiationNeeded()
-	pc.negotiationNeededOp()
-	pc.OnNegotiationNeeded(func() {
-		t.Error("OnNegotiationNeeded called")
-	})
-	pc.OnNegotiationNeeded(nil)
-	pc.onNegotiationNeeded()
-	pc.negotiationNeededOp()
-
-	assert.NoError(t, pc.Close())
 }

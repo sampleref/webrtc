@@ -4,7 +4,6 @@ package webrtc
 
 import (
 	"fmt"
-	"sync"
 	"sync/atomic"
 
 	"github.com/pion/rtp"
@@ -17,13 +16,8 @@ type RTPTransceiver struct {
 	receiver  atomic.Value // *RTPReceiver
 	direction atomic.Value // RTPTransceiverDirection
 
-	codecs []RTPCodecParameters // User provided codecs via SetCodecPreferences
-
 	stopped bool
 	kind    RTPCodecType
-
-	api *API
-	mu  sync.RWMutex
 }
 
 func newRTPTransceiver(
@@ -31,49 +25,12 @@ func newRTPTransceiver(
 	sender *RTPSender,
 	direction RTPTransceiverDirection,
 	kind RTPCodecType,
-	api *API,
 ) *RTPTransceiver {
-	t := &RTPTransceiver{kind: kind, api: api}
+	t := &RTPTransceiver{kind: kind}
 	t.setReceiver(receiver)
 	t.setSender(sender)
 	t.setDirection(direction)
 	return t
-}
-
-// SetCodecPreferences sets preferred list of supported codecs
-// if codecs is empty or nil we reset to default from MediaEngine
-func (t *RTPTransceiver) SetCodecPreferences(codecs []RTPCodecParameters) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	for _, codec := range codecs {
-		if _, matchType := codecParametersFuzzySearch(codec, t.api.mediaEngine.getCodecsByKind(t.kind)); matchType == codecMatchNone {
-			return fmt.Errorf("%w %s", errRTPTransceiverCodecUnsupported, codec.MimeType)
-		}
-	}
-
-	t.codecs = codecs
-	return nil
-}
-
-// Codecs returns list of supported codecs
-func (t *RTPTransceiver) getCodecs() []RTPCodecParameters {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	mediaEngineCodecs := t.api.mediaEngine.getCodecsByKind(t.kind)
-	if len(t.codecs) == 0 {
-		return mediaEngineCodecs
-	}
-
-	filteredCodecs := []RTPCodecParameters{}
-	for _, codec := range t.codecs {
-		if c, matchType := codecParametersFuzzySearch(codec, mediaEngineCodecs); matchType != codecMatchNone {
-			filteredCodecs = append(filteredCodecs, c)
-		}
-	}
-
-	return filteredCodecs
 }
 
 // Sender returns the RTPTransceiver's RTPSender if it has one
@@ -92,14 +49,6 @@ func (t *RTPTransceiver) SetSender(s *RTPSender, track TrackLocal) error {
 }
 
 func (t *RTPTransceiver) setSender(s *RTPSender) {
-	if s != nil {
-		s.setRTPTransceiver(t)
-	}
-
-	if prevSender := t.Sender(); prevSender != nil {
-		prevSender.setRTPTransceiver(nil)
-	}
-
 	t.sender.Store(s)
 }
 
@@ -157,14 +106,6 @@ func (t *RTPTransceiver) Stop() error {
 }
 
 func (t *RTPTransceiver) setReceiver(r *RTPReceiver) {
-	if r != nil {
-		r.setRTPTransceiver(t)
-	}
-
-	if prevReceiver := t.Receiver(); prevReceiver != nil {
-		prevReceiver.setRTPTransceiver(nil)
-	}
-
 	t.receiver.Store(r)
 }
 

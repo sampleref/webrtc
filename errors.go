@@ -135,9 +135,6 @@ var (
 	// ErrUnsupportedCodec indicates the remote peer doesn't support the requested codec
 	ErrUnsupportedCodec = errors.New("unable to start track, codec is not supported by remote")
 
-	// ErrRTPSenderNewTrackHasIncorrectKind indicates that the new track is of a different kind than the previous/original
-	ErrRTPSenderNewTrackHasIncorrectKind = errors.New("new track must be of the same kind as previous")
-
 	// ErrUnbindFailed indicates that a TrackLocal was not able to be unbind
 	ErrUnbindFailed = errors.New("failed to unbind TrackLocal from PeerConnection")
 
@@ -205,7 +202,6 @@ var (
 
 	errRTPTransceiverCannotChangeMid        = errors.New("errRTPSenderTrackNil")
 	errRTPTransceiverSetSendingInvalidState = errors.New("invalid state change in RTPTransceiver.setSending")
-	errRTPTransceiverCodecUnsupported       = errors.New("unsupported codec type by this transceiver")
 
 	errSCTPTransportDTLS = errors.New("DTLS not established")
 
@@ -223,6 +219,4 @@ var (
 	errICETransportNotInNew = errors.New("ICETransport can only be called in ICETransportStateNew")
 
 	errCertificatePEMFormatError = errors.New("bad Certificate PEM format")
-
-	errRTPTooShort = errors.New("not long enough to be a RTP Packet")
 )

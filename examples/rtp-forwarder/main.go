@@ -3,9 +3,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
-	"os"
 	"time"
 
 	"github.com/pion/interceptor"
@@ -30,12 +30,12 @@ func main() {
 	// Setup the codecs you want to use.
 	// We'll use a VP8 and Opus but you can also define your own
 	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "video/VP8", ClockRate: 90000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
 	}, webrtc.RTPCodecTypeVideo); err != nil {
 		panic(err)
 	}
 	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/opus", ClockRate: 48000, Channels: 0, SDPFmtpLine: "", RTCPFeedback: nil},
 	}, webrtc.RTPCodecTypeAudio); err != nil {
 		panic(err)
 	}
@@ -68,11 +68,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer func() {
-		if cErr := peerConnection.Close(); cErr != nil {
-			fmt.Printf("cannot close peerConnection: %v\n", cErr)
-		}
-	}()
 
 	// Allow us to receive 1 audio track, and 1 video track
 	if _, err = peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio); err != nil {
@@ -168,6 +163,9 @@ func main() {
 		}
 	})
 
+	// Create context
+	ctx, cancel := context.WithCancel(context.Background())
+
 	// Set the handler for ICE connection state
 	// This will notify you when the peer has connected/disconnected
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
@@ -175,20 +173,10 @@ func main() {
 
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			fmt.Println("Ctrl+C the remote client to stop the demo")
-		}
-	})
-
-	// Set the handler for Peer connection state
-	// This will notify you when the peer has connected/disconnected
-	peerConnection.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		fmt.Printf("Peer Connection State has changed: %s\n", s.String())
-
-		if s == webrtc.PeerConnectionStateFailed {
-			// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
-			// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
-			// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
+		} else if connectionState == webrtc.ICEConnectionStateFailed ||
+			connectionState == webrtc.ICEConnectionStateDisconnected {
 			fmt.Println("Done forwarding")
-			os.Exit(0)
+			cancel()
 		}
 	})
 
@@ -223,6 +211,6 @@ func main() {
 	// Output the answer in base64 so we can paste it in browser
 	fmt.Println(signal.Encode(*peerConnection.LocalDescription()))
 
-	// Block forever
-	select {}
+	// Wait for context to be done
+	<-ctx.Done()
 }

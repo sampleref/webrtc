@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/pion/rtp"
@@ -58,8 +57,6 @@ type MediaEngine struct {
 
 	headerExtensions           []mediaEngineHeaderExtension
 	negotiatedHeaderExtensions map[int]mediaEngineHeaderExtension
-
-	mu sync.RWMutex
 }
 
 // RegisterDefaultCodecs registers the default codecs supported by Pion WebRTC.
@@ -199,9 +196,6 @@ func (m *MediaEngine) addCodec(codecs []RTPCodecParameters, codec RTPCodecParame
 // These are the list of codecs supported by this PeerConnection.
 // RegisterCodec is not safe for concurrent use.
 func (m *MediaEngine) RegisterCodec(codec RTPCodecParameters, typ RTPCodecType) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	codec.statsID = fmt.Sprintf("RTPCodec-%d", time.Now().UnixNano())
 	switch typ {
 	case RTPCodecTypeAudio:
@@ -217,9 +211,6 @@ func (m *MediaEngine) RegisterCodec(codec RTPCodecParameters, typ RTPCodecType) 
 // RegisterHeaderExtension adds a header extension to the MediaEngine
 // To determine the negotiated value use `GetHeaderExtensionID` after signaling is complete
 func (m *MediaEngine) RegisterHeaderExtension(extension RTPHeaderExtensionCapability, typ RTPCodecType, allowedDirections ...RTPTransceiverDirection) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if m.negotiatedHeaderExtensions == nil {
 		m.negotiatedHeaderExtensions = map[int]mediaEngineHeaderExtension{}
 	}
@@ -260,9 +251,6 @@ func (m *MediaEngine) RegisterHeaderExtension(extension RTPHeaderExtensionCapabi
 
 // RegisterFeedback adds feedback mechanism to already registered codecs.
 func (m *MediaEngine) RegisterFeedback(feedback RTCPFeedback, typ RTPCodecType) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	switch typ {
 	case RTPCodecTypeVideo:
 		for i, v := range m.videoCodecs {
@@ -280,9 +268,6 @@ func (m *MediaEngine) RegisterFeedback(feedback RTCPFeedback, typ RTPCodecType) 
 // getHeaderExtensionID returns the negotiated ID for a header extension.
 // If the Header Extension isn't enabled ok will be false
 func (m *MediaEngine) getHeaderExtensionID(extension RTPHeaderExtensionCapability) (val int, audioNegotiated, videoNegotiated bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	if m.negotiatedHeaderExtensions == nil {
 		return 0, false, false
 	}
@@ -299,8 +284,6 @@ func (m *MediaEngine) getHeaderExtensionID(extension RTPHeaderExtensionCapabilit
 // copy copies any user modifiable state of the MediaEngine
 // all internal state is reset
 func (m *MediaEngine) copy() *MediaEngine {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	cloned := &MediaEngine{
 		videoCodecs:      append([]RTPCodecParameters{}, m.videoCodecs...),
 		audioCodecs:      append([]RTPCodecParameters{}, m.audioCodecs...),
@@ -313,24 +296,12 @@ func (m *MediaEngine) copy() *MediaEngine {
 }
 
 func (m *MediaEngine) getCodecByPayload(payloadType PayloadType) (RTPCodecParameters, RTPCodecType, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	codecs := m.negotiatedVideoCodecs
-	if !m.negotiatedVideo {
-		codecs = m.videoCodecs
-	}
-	for _, codec := range codecs {
+	for _, codec := range m.negotiatedVideoCodecs {
 		if codec.PayloadType == payloadType {
 			return codec, RTPCodecTypeVideo, nil
 		}
 	}
-
-	codecs = m.negotiatedAudioCodecs
-	if !m.negotiatedAudio {
-		codecs = m.audioCodecs
-	}
-	for _, codec := range codecs {
+	for _, codec := range m.negotiatedAudioCodecs {
 		if codec.PayloadType == payloadType {
 			return codec, RTPCodecTypeAudio, nil
 		}
@@ -340,9 +311,6 @@ func (m *MediaEngine) getCodecByPayload(payloadType PayloadType) (RTPCodecParame
 }
 
 func (m *MediaEngine) collectStats(collector *statsReportCollector) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	statsLoop := func(codecs []RTPCodecParameters) {
 		for _, codec := range codecs {
 			collector.Collecting()
@@ -450,9 +418,6 @@ func (m *MediaEngine) pushCodecs(codecs []RTPCodecParameters, typ RTPCodecType) 
 
 // Update the MediaEngine from a remote description
 func (m *MediaEngine) updateFromRemoteDescription(desc sdp.SessionDescription) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	for _, media := range desc.MediaDescriptions {
 		var typ RTPCodecType
 		switch {
@@ -513,9 +478,6 @@ func (m *MediaEngine) updateFromRemoteDescription(desc sdp.SessionDescription) e
 }
 
 func (m *MediaEngine) getCodecsByKind(typ RTPCodecType) []RTPCodecParameters {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	if typ == RTPCodecTypeVideo {
 		if m.negotiatedVideo {
 			return m.negotiatedVideoCodecs
@@ -534,9 +496,6 @@ func (m *MediaEngine) getCodecsByKind(typ RTPCodecType) []RTPCodecParameters {
 }
 
 func (m *MediaEngine) getRTPParametersByKind(typ RTPCodecType, directions []RTPTransceiverDirection) RTPParameters {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	headerExtensions := make([]RTPHeaderExtensionParameter, 0)
 
 	if m.negotiatedVideo && typ == RTPCodecTypeVideo ||
@@ -566,8 +525,6 @@ func (m *MediaEngine) getRTPParametersByPayloadType(payloadType PayloadType) (RT
 		return RTPParameters{}, err
 	}
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	headerExtensions := make([]RTPHeaderExtensionParameter, 0)
 	for id, e := range m.negotiatedHeaderExtensions {
 		if e.isAudio && typ == RTPCodecTypeAudio || e.isVideo && typ == RTPCodecTypeVideo {

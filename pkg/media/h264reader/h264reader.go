@@ -167,10 +167,8 @@ func (reader *H264Reader) processByte(readByte byte) (nalFound bool) {
 				countOfConsecutiveZeroBytesInPrefix = 3
 			}
 			nalUnitLength := len(reader.nalBuffer) - countOfConsecutiveZeroBytesInPrefix
-			if nalUnitLength > 0 {
-				reader.nalBuffer = reader.nalBuffer[0:nalUnitLength]
-				nalFound = true
-			}
+			reader.nalBuffer = reader.nalBuffer[0:nalUnitLength]
+			nalFound = true
 		} else {
 			reader.countOfConsecutiveZeroBytes = 0
 		}

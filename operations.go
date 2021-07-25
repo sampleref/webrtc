@@ -1,7 +1,6 @@
 package webrtc
 
 import (
-	"container/list"
 	"sync"
 )
 
@@ -12,13 +11,11 @@ type operation func()
 type operations struct {
 	mu   sync.Mutex
 	busy bool
-	ops  *list.List
+	ops  []operation
 }
 
 func newOperations() *operations {
-	return &operations{
-		ops: list.New(),
-	}
+	return &operations{}
 }
 
 // Enqueue adds a new action to be executed. If there are no actions scheduled,
@@ -30,7 +27,7 @@ func (o *operations) Enqueue(op operation) {
 
 	o.mu.Lock()
 	running := o.busy
-	o.ops.PushBack(op)
+	o.ops = append(o.ops, op)
 	o.busy = true
 	o.mu.Unlock()
 
@@ -43,7 +40,7 @@ func (o *operations) Enqueue(op operation) {
 func (o *operations) IsEmpty() bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.ops.Len() == 0
+	return len(o.ops) == 0
 }
 
 // Done blocks until all currently enqueued operations are finished executing.
@@ -60,20 +57,20 @@ func (o *operations) Done() {
 func (o *operations) pop() func() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.ops.Len() == 0 {
+	if len(o.ops) == 0 {
 		return nil
 	}
 
-	e := o.ops.Front()
-	o.ops.Remove(e)
-	return e.Value.(operation)
+	fn := o.ops[0]
+	o.ops = o.ops[1:]
+	return fn
 }
 
 func (o *operations) start() {
 	defer func() {
 		o.mu.Lock()
 		defer o.mu.Unlock()
-		if o.ops.Len() == 0 {
+		if len(o.ops) == 0 {
 			o.busy = false
 			return
 		}

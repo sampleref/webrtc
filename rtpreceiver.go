@@ -38,8 +38,6 @@ type RTPReceiver struct {
 	closed, received chan interface{}
 	mu               sync.RWMutex
 
-	tr *RTPTransceiver
-
 	// A reference to the associated api object
 	api *API
 }
@@ -62,12 +60,6 @@ func (api *API) NewRTPReceiver(kind RTPCodecType, transport *DTLSTransport) (*RT
 	return r, nil
 }
 
-func (r *RTPReceiver) setRTPTransceiver(tr *RTPTransceiver) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.tr = tr
-}
-
 // Transport returns the currently-configured *DTLSTransport or nil
 // if one has not yet been configured
 func (r *RTPReceiver) Transport() *DTLSTransport {
@@ -76,20 +68,10 @@ func (r *RTPReceiver) Transport() *DTLSTransport {
 	return r.transport
 }
 
-func (r *RTPReceiver) getParameters() RTPParameters {
-	parameters := r.api.mediaEngine.getRTPParametersByKind(r.kind, []RTPTransceiverDirection{RTPTransceiverDirectionRecvonly})
-	if r.tr != nil {
-		parameters.Codecs = r.tr.getCodecs()
-	}
-	return parameters
-}
-
 // GetParameters describes the current configuration for the encoding and
 // transmission of media on the receiver's track.
 func (r *RTPReceiver) GetParameters() RTPParameters {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.getParameters()
+	return r.api.mediaEngine.getRTPParametersByKind(r.kind, []RTPTransceiverDirection{RTPTransceiverDirectionRecvonly})
 }
 
 // Track returns the RtpTransceiver TrackRemote
@@ -132,12 +114,12 @@ func (r *RTPReceiver) Receive(parameters RTPReceiveParameters) error {
 			track: newTrackRemote(
 				r.kind,
 				parameters.Encodings[0].SSRC,
-				parameters.Encodings[0].RID,
+				"",
 				r,
 			),
 		}
 
-		globalParams := r.getParameters()
+		globalParams := r.GetParameters()
 		codec := RTPCodecCapability{}
 		if len(globalParams.Codecs) != 0 {
 			codec = globalParams.Codecs[0].RTPCodecCapability
